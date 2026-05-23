@@ -1,0 +1,2531 @@
+openapi: 3.0.3
+info:
+  title: Personal Finance and Subscription Tracker API
+  version: 1.0.0
+  description: Документация за курсова работа на тема "Personal Finance and Subscription Tracker" изработена от Андон Киндеков №2401321075. Системата е
+    планирана като клиент-сървър приложение с C# ASP.NET Core Web API, MySQL база данни и клиентски интерфейс. API-то описва услуги за потребители,
+    категории, финансови записи, външни абонаменти/регулярни разходи, месечни бюджети, спестовни цели и справки. Абонаментите в тази система са
+    външни услуги, които потребителят следи като регулярни разходи (например Spotify, Netflix, интернет, фитнес или софтуерна услуга).
+    Системата е предназначена за лична отчетност, планиране на месечни разходи, проследяване на външни абонаменти и управление на спестовни цели. Всички суми са информационни и служат само за планиране, отчетност и личен бюджет.
+
+servers:
+- url: https://localhost:5001
+  description: Local HTTPS development server
+- url: http://localhost:5000
+  description: Local HTTP development server
+tags:
+- name: System
+  description: Технически услуги за проверка на състоянието на API-то.
+- name: Authentication
+  description: Услуги за регистрация, вход, изход и текущ потребител.
+- name: Users
+  description: CRUD услуги за потребителски профили.
+- name: Categories
+  description: CRUD услуги за категории на приходи, разходи, външни абонаменти и спестявания.
+- name: FinancialRecords
+  description: CRUD услуги за приходи и разходи.
+- name: Subscriptions
+  description: CRUD услуги за проследяване на външни абонаменти и регулярни разходи като информационни записи.
+- name: Budgets
+  description: CRUD услуги за месечни бюджети по категории.
+- name: SavingsGoals
+  description: CRUD услуги за лични спестовни цели, например кола, апартамент, техника или пътуване.
+- name: Reports
+  description: Справки, обобщения и анализ на личните финанси.
+paths:
+  /api/system/health:
+    get:
+      tags:
+      - System
+      summary: Проверява дали API услугата работи.
+      description: Връща базова информация за състоянието на системата, версията на API-то и връзката с базата данни.
+      responses:
+        '200':
+          description: API услугата работи.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/auth/register:
+    post:
+      tags:
+      - Authentication
+      summary: Регистрира нов потребител.
+      description: Създава нов потребителски профил. Имейлът трябва да бъде уникален, а паролата трябва да отговаря на минималните изисквания
+        за сигурност.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Успешна регистрация.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auth/login:
+    post:
+      tags:
+      - Authentication
+      summary: Вход в системата.
+      description: Валидира имейл и парола и връща JWT access token за достъп до защитените услуги.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешен вход.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/auth/logout:
+    post:
+      tags:
+      - Authentication
+      summary: Изход от системата.
+      description: Клиентът изтрива локално съхранения JWT token. В бъдеща реализация може да се добави blacklist за токени.
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: Успешен изход.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/auth/me:
+    get:
+      tags:
+      - Authentication
+      summary: Връща текущия автентикиран потребител.
+      description: Използва JWT токена, за да определи кой е текущият потребител.
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Данни за текущия потребител.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/users:
+    get:
+      tags:
+      - Users
+      summary: Връща списък с потребители.
+      description: Поддържа търсене по име или имейл, филтриране по активност, странициране и сортиране. В стандартна реализация тази услуга може
+        да бъде достъпна само за администратор.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/SearchQuery'
+      - name: isActive
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - firstName
+          - lastName
+          - email
+          - createdAt
+          default: createdAt
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Успешно върнат списък.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+      - Users
+      summary: Създава нов потребител.
+      description: CRUD операция Create за модел User. Валидира уникален имейл, дължина на имената, роля и основна валута.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: Ресурсът е създаден успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/users/{id}:
+    get:
+      tags:
+      - Users
+      summary: Връща потребител по ID.
+      description: Извлича конкретен ресурс, като проверява дали принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Ресурсът е намерен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+      - Users
+      summary: Редактира потребител.
+      description: CRUD операция Update. Валидира входните данни и актуализира ресурса само ако принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: Ресурсът е редактиран успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Users
+      summary: Изтрива потребител.
+      description: CRUD операция Delete. При реализацията може да се използва меко изтриване чрез isActive=false, когато ресурсът участва във
+        връзки с други записи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ресурсът е изтрит успешно.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/categories:
+    get:
+      tags:
+      - Categories
+      summary: Връща списък с категории.
+      description: Извлича категориите на текущия потребител. Поддържа търсене по име, филтриране по тип категория и активност, странициране и
+        сортиране.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/SearchQuery'
+      - name: categoryType
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/CategoryType'
+      - name: isActive
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - name
+          - categoryType
+          - createdAt
+          default: name
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Успешно върнат списък.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedCategoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+      - Categories
+      summary: Създава нова категория.
+      description: CRUD операция Create за модел Category. Категорията може да се използва за приходи, разходи, външни абонаменти или спестявания.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryCreateRequest'
+      responses:
+        '201':
+          description: Ресурсът е създаден успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/categories/{id}:
+    get:
+      tags:
+      - Categories
+      summary: Връща категория по ID.
+      description: Извлича конкретен ресурс, като проверява дали принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Ресурсът е намерен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+      - Categories
+      summary: Редактира категория.
+      description: CRUD операция Update. Валидира входните данни и актуализира ресурса само ако принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryUpdateRequest'
+      responses:
+        '200':
+          description: Ресурсът е редактиран успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Categories
+      summary: Изтрива категория.
+      description: CRUD операция Delete. При реализацията може да се използва меко изтриване чрез isActive=false, когато ресурсът участва във
+        връзки с други записи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ресурсът е изтрит успешно.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/financial-records:
+    get:
+      tags:
+      - FinancialRecords
+      summary: Връща списък с финансови записи.
+      description: Извлича приходите и разходите на текущия потребител. Поддържа филтриране по категория, тип запис, период, сума и текстово търсене,
+        както и странициране и сортиране.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/SearchQuery'
+      - name: recordType
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/RecordType'
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: fromDate
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: toDate
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: minAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - name: maxAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - amount
+          - recordDate
+          - createdAt
+          - categoryName
+          default: recordDate
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Успешно върнат списък.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedFinancialRecordResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+      - FinancialRecords
+      summary: Създава нов финансов запис.
+      description: CRUD операция Create за модел FinancialRecord. Записът представлява приход или разход за лична отчетност.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinancialRecordCreateRequest'
+      responses:
+        '201':
+          description: Ресурсът е създаден успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialRecordResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/financial-records/{id}:
+    get:
+      tags:
+      - FinancialRecords
+      summary: Връща финансов запис по ID.
+      description: Извлича конкретен ресурс, като проверява дали принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Ресурсът е намерен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialRecordResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+      - FinancialRecords
+      summary: Редактира финансов запис.
+      description: CRUD операция Update. Валидира входните данни и актуализира ресурса само ако принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinancialRecordUpdateRequest'
+      responses:
+        '200':
+          description: Ресурсът е редактиран успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialRecordResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - FinancialRecords
+      summary: Изтрива финансов запис.
+      description: CRUD операция Delete. При реализацията може да се използва меко изтриване чрез isActive=false, когато ресурсът участва във
+        връзки с други записи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ресурсът е изтрит успешно.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/subscriptions:
+    get:
+      tags:
+      - Subscriptions
+      summary: Връща списък с външни абонаменти и регулярни разходи.
+      description: Извлича външните абонаменти на текущия потребител, например Spotify, Netflix, интернет, фитнес или друга регулярна услуга.
+        Поддържа филтриране по категория, статус, цикъл, дата на следващо начисляване и сума.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/SearchQuery'
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/SubscriptionStatus'
+      - name: cycle
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/RenewalCycle'
+      - name: nextDueFrom
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: nextDueTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: minAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - name: maxAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - name
+          - amount
+          - nextDueDate
+          - createdAt
+          - status
+          default: nextDueDate
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Успешно върнат списък.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSubscriptionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+      - Subscriptions
+      summary: Създава запис за външен абонамент.
+      description: CRUD операция Create за модел Subscription. Този запис служи само за проследяване на регулярен разход, месечно планиране и лична отчетност.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionCreateRequest'
+      responses:
+        '201':
+          description: Ресурсът е създаден успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/subscriptions/{id}:
+    get:
+      tags:
+      - Subscriptions
+      summary: Връща външен абонамент по ID.
+      description: Извлича конкретен ресурс, като проверява дали принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Ресурсът е намерен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+      - Subscriptions
+      summary: Редактира външен абонамент.
+      description: CRUD операция Update. Валидира входните данни и актуализира ресурса само ако принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionUpdateRequest'
+      responses:
+        '200':
+          description: Ресурсът е редактиран успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Subscriptions
+      summary: Изтрива външен абонамент.
+      description: CRUD операция Delete. При реализацията може да се използва меко изтриване чрез isActive=false, когато ресурсът участва във
+        връзки с други записи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ресурсът е изтрит успешно.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/subscriptions/{id}/status:
+    patch:
+      tags:
+      - Subscriptions
+      summary: Променя статуса на външен абонамент.
+      description: Позволява активиране, паузиране, прекратяване или отбелязване като изтекъл. Операцията е само справочна и не изпраща пари към
+        външна услуга.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionStatusUpdateRequest'
+      responses:
+        '200':
+          description: Статусът е променен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/subscriptions/upcoming:
+    get:
+      tags:
+      - Subscriptions
+      summary: Връща външни абонаменти с предстояща дата.
+      description: Извлича активни абонаменти, чиито следващи дати попадат в зададен брой дни. Услугата помага на потребителя да планира бъдещите
+        си разходи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 30
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Предстоящи външни абонаменти.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSubscriptionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/budgets:
+    get:
+      tags:
+      - Budgets
+      summary: Връща списък с месечни бюджети.
+      description: Извлича планираните бюджети на текущия потребител. Поддържа филтриране по месец, година, категория, активност и сума.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: month
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 12
+      - name: year
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 2000
+          maximum: 2100
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: isActive
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: minLimitAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - name: maxLimitAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - year
+          - month
+          - limitAmount
+          - categoryName
+          - createdAt
+          default: year
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Успешно върнат списък.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedBudgetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+      - Budgets
+      summary: Създава нов месечен бюджет.
+      description: CRUD операция Create за модел Budget. Бюджетът определя планиран лимит за разходи по категория за конкретен месец и година.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetCreateRequest'
+      responses:
+        '201':
+          description: Ресурсът е създаден успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/budgets/{id}:
+    get:
+      tags:
+      - Budgets
+      summary: Връща месечен бюджет по ID.
+      description: Извлича конкретен ресурс, като проверява дали принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Ресурсът е намерен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+      - Budgets
+      summary: Редактира месечен бюджет.
+      description: CRUD операция Update. Валидира входните данни и актуализира ресурса само ако принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetUpdateRequest'
+      responses:
+        '200':
+          description: Ресурсът е редактиран успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Budgets
+      summary: Изтрива месечен бюджет.
+      description: CRUD операция Delete. При реализацията може да се използва меко изтриване чрез isActive=false, когато ресурсът участва във
+        връзки с други записи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ресурсът е изтрит успешно.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/savings-goals:
+    get:
+      tags:
+      - SavingsGoals
+      summary: Връща списък със спестовни цели.
+      description: Извлича целите на текущия потребител, например спестяване за кола, апартамент, техника, ремонт или пътуване. Поддържа филтриране
+        по статус, краен срок, сума и текстово търсене.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/SearchQuery'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/SavingsGoalStatus'
+      - name: targetDateFrom
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: targetDateTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: minTargetAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - name: maxTargetAmount
+        in: query
+        required: false
+        schema:
+          type: number
+          format: decimal
+          minimum: 0
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      - name: sortBy
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - name
+          - targetAmount
+          - currentAmount
+          - targetDate
+          - createdAt
+          - status
+          default: targetDate
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Успешно върнат списък.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSavingsGoalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+      - SavingsGoals
+      summary: Създава нова спестовна цел.
+      description: CRUD операция Create за модел SavingsGoal. Целта съдържа желана сума, текущо спестена сума, срок и статус.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavingsGoalCreateRequest'
+      responses:
+        '201':
+          description: Ресурсът е създаден успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavingsGoalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/savings-goals/{id}:
+    get:
+      tags:
+      - SavingsGoals
+      summary: Връща спестовна цел по ID.
+      description: Извлича конкретен ресурс, като проверява дали принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Ресурсът е намерен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavingsGoalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+      - SavingsGoals
+      summary: Редактира спестовна цел.
+      description: CRUD операция Update. Валидира входните данни и актуализира ресурса само ако принадлежи на текущия потребител.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavingsGoalUpdateRequest'
+      responses:
+        '200':
+          description: Ресурсът е редактиран успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavingsGoalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - SavingsGoals
+      summary: Изтрива спестовна цел.
+      description: CRUD операция Delete. При реализацията може да се използва меко изтриване чрез isActive=false, когато ресурсът участва във
+        връзки с други записи.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ресурсът е изтрит успешно.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/savings-goals/{id}/progress:
+    patch:
+      tags:
+      - SavingsGoals
+      summary: Актуализира текущо спестената сума по цел.
+      description: Позволява на потребителя да увеличи или коригира текущо спестената сума. Това е информационна операция в приложението, а не
+        реална финансова операция.
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavingsGoalProgressUpdateRequest'
+      responses:
+        '200':
+          description: Прогресът е актуализиран.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavingsGoalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/reports/monthly-summary:
+    get:
+      tags:
+      - Reports
+      summary: Връща месечно финансово обобщение.
+      description: Обобщава приходи, разходи, външни абонаменти, използване на бюджети, свободни средства и потенциална сума за спестяване за
+        избран месец.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 12
+      - name: year
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 2000
+          maximum: 2100
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      responses:
+        '200':
+          description: Месечно обобщение.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonthlySummaryResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/reports/category-summary:
+    get:
+      tags:
+      - Reports
+      summary: Връща обобщение по категории.
+      description: Показва сумите по категории за избран период. Поддържа филтриране по тип запис, период и категория.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: recordType
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/RecordType'
+      - name: fromDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: toDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: categoryId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Обобщение по категории.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategorySummaryItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/reports/savings-progress:
+    get:
+      tags:
+      - Reports
+      summary: Връща справка за напредъка по спестовни цели.
+      description: Показва текуща спестена сума, оставаща сума, процент изпълнение и цели, които са близо до крайния срок.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/SavingsGoalStatus'
+      - name: targetDateTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Справка за спестовни цели.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSavingsGoalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer token, получен при вход в системата.
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      description: Уникален идентификатор на ресурса.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    SearchQuery:
+      name: search
+      in: query
+      required: false
+      description: Текстово търсене по име, описание или друг подходящ текстов атрибут.
+      schema:
+        type: string
+        maxLength: 100
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Номер на страницата при странициране.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Брой елементи на страница.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    SortDirection:
+      name: sortDirection
+      in: query
+      required: false
+      description: Посока на сортиране.
+      schema:
+        type: string
+        enum:
+        - asc
+        - desc
+        default: asc
+  responses:
+    ValidationError:
+      description: Невалидни входни данни.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblemDetails'
+    Unauthorized:
+      description: Липсващ, невалиден или изтекъл JWT token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: Ресурсът не е намерен или не принадлежи на текущия потребител.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Конфликт на данни, например дублиран уникален запис или ресурс, който се използва от други записи.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    InternalServerError:
+      description: Вътрешна сървърна грешка. API-то не трябва да връща stack trace към клиента.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+  schemas:
+    RecordType:
+      type: string
+      enum:
+      - income
+      - expense
+      description: 'Тип финансов запис: приход или разход.'
+    CategoryType:
+      type: string
+      enum:
+      - income
+      - expense
+      - subscription
+      - saving
+      description: Тип категория според употребата ѝ в системата.
+    SubscriptionStatus:
+      type: string
+      enum:
+      - active
+      - paused
+      - cancelled
+      - expired
+      description: Статус на външен абонамент/регулярен разход.
+    RenewalCycle:
+      type: string
+      enum:
+      - weekly
+      - monthly
+      - quarterly
+      - yearly
+      - custom
+      description: Цикъл на външния абонамент. Използва се само за планиране и справки.
+    SavingsGoalStatus:
+      type: string
+      enum:
+      - active
+      - completed
+      - cancelled
+      description: Статус на спестовна цел.
+    CurrencyCode:
+      type: string
+      enum:
+      - BGN
+      - EUR
+      - USD
+      description: Валута на информационните суми в системата.
+    ProblemDetails:
+      type: object
+      description: Стандартизиран отговор при грешка, съвместим с RFC 7807 Problem Details.
+      properties:
+        type:
+          type: string
+          example: https://example.com/errors/not-found
+        title:
+          type: string
+          example: Resource not found
+        status:
+          type: integer
+          example: 404
+        detail:
+          type: string
+          example: The requested resource was not found.
+        instance:
+          type: string
+          example: /api/financial-records/123
+      required:
+      - title
+      - status
+    ValidationProblemDetails:
+      allOf:
+      - $ref: '#/components/schemas/ProblemDetails'
+      - type: object
+        properties:
+          errors:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+            example:
+              amount:
+              - Amount must be greater than 0.
+              recordDate:
+              - Record date is required.
+    RegisterRequest:
+      type: object
+      required:
+      - firstName
+      - lastName
+      - email
+      - password
+      - defaultCurrency
+      properties:
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          description: Минимум 8 символа; препоръчително е да съдържа главна буква, малка буква, цифра и специален символ.
+        defaultCurrency:
+          $ref: '#/components/schemas/CurrencyCode'
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+    AuthResponse:
+      type: object
+      required:
+      - accessToken
+      - tokenType
+      - expiresAt
+      - user
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    UserCreateRequest:
+      allOf:
+      - $ref: '#/components/schemas/RegisterRequest'
+      - type: object
+        properties:
+          role:
+            type: string
+            enum:
+            - user
+            - admin
+            default: user
+          isActive:
+            type: boolean
+            default: true
+    UserUpdateRequest:
+      type: object
+      required:
+      - firstName
+      - lastName
+      - email
+      - defaultCurrency
+      - isActive
+      properties:
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        defaultCurrency:
+          $ref: '#/components/schemas/CurrencyCode'
+        isActive:
+          type: boolean
+    UserResponse:
+      type: object
+      description: 'DB table Users: id, firstName, lastName, email, passwordHash, defaultCurrency, isActive, role, createdAt, updatedAt.'
+      required:
+      - id
+      - firstName
+      - lastName
+      - email
+      - defaultCurrency
+      - isActive
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        defaultCurrency:
+          $ref: '#/components/schemas/CurrencyCode'
+        isActive:
+          type: boolean
+        role:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CategoryCreateRequest:
+      type: object
+      required:
+      - name
+      - categoryType
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        categoryType:
+          $ref: '#/components/schemas/CategoryType'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        colorHex:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+          nullable: true
+          example: '#3A86FF'
+        iconName:
+          type: string
+          maxLength: 50
+          nullable: true
+        isActive:
+          type: boolean
+          default: true
+    CategoryUpdateRequest:
+      type: object
+      required:
+      - name
+      - categoryType
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        categoryType:
+          $ref: '#/components/schemas/CategoryType'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        colorHex:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+          nullable: true
+          example: '#3A86FF'
+        iconName:
+          type: string
+          maxLength: 50
+          nullable: true
+        isActive:
+          type: boolean
+          default: true
+    CategoryResponse:
+      type: object
+      description: 'DB table Categories: id, userId, name, categoryType, description, colorHex, iconName, isActive, createdAt, updatedAt. Relations:
+        userId -> Users.id.'
+      required:
+      - id
+      - userId
+      - name
+      - categoryType
+      - isActive
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        categoryType:
+          $ref: '#/components/schemas/CategoryType'
+        description:
+          type: string
+          nullable: true
+        colorHex:
+          type: string
+          nullable: true
+        iconName:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    FinancialRecordCreateRequest:
+      type: object
+      required:
+      - categoryId
+      - recordType
+      - amount
+      - currency
+      - recordDate
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        recordDate:
+          type: string
+          format: date
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        note:
+          type: string
+          maxLength: 1000
+          nullable: true
+        isRecurring:
+          type: boolean
+          default: false
+    FinancialRecordUpdateRequest:
+      type: object
+      required:
+      - categoryId
+      - recordType
+      - amount
+      - currency
+      - recordDate
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        recordDate:
+          type: string
+          format: date
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        note:
+          type: string
+          maxLength: 1000
+          nullable: true
+        isRecurring:
+          type: boolean
+          default: false
+    FinancialRecordResponse:
+      type: object
+      description: 'DB table FinancialRecords: id, userId, categoryId, recordType, amount, currency, recordDate, description, note, isRecurring,
+        createdAt, updatedAt. Relations: userId -> Users.id, categoryId -> Categories.id. Записът е информационен и служи за лична отчетност.'
+      required:
+      - id
+      - userId
+      - categoryId
+      - categoryName
+      - recordType
+      - amount
+      - currency
+      - recordDate
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        categoryId:
+          type: integer
+          format: int64
+        categoryName:
+          type: string
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        amount:
+          type: number
+          format: decimal
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        recordDate:
+          type: string
+          format: date
+        description:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        isRecurring:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SubscriptionCreateRequest:
+      type: object
+      description: 'Външен абонамент/регулярен разход, който потребителят проследява. Примери: Spotify, Netflix, интернет, фитнес, софтуерна услуга.'
+      required:
+      - categoryId
+      - name
+      - amount
+      - currency
+      - cycle
+      - startDate
+      - nextDueDate
+      - status
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        cycle:
+          $ref: '#/components/schemas/RenewalCycle'
+        customCycleDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          nullable: true
+          description: Използва се само ако cycle = custom.
+        startDate:
+          type: string
+          format: date
+        nextDueDate:
+          type: string
+          format: date
+          description: Следваща дата, на която потребителят очаква този разход.
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        includeInMonthlyForecast:
+          type: boolean
+          default: true
+          description: Показва дали сумата да участва в месечната прогноза за разходите.
+    SubscriptionUpdateRequest:
+      type: object
+      description: 'Външен абонамент/регулярен разход, който потребителят проследява. Примери: Spotify, Netflix, интернет, фитнес, софтуерна услуга.'
+      required:
+      - categoryId
+      - name
+      - amount
+      - currency
+      - cycle
+      - startDate
+      - nextDueDate
+      - status
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        cycle:
+          $ref: '#/components/schemas/RenewalCycle'
+        customCycleDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          nullable: true
+          description: Използва се само ако cycle = custom.
+        startDate:
+          type: string
+          format: date
+        nextDueDate:
+          type: string
+          format: date
+          description: Следваща дата, на която потребителят очаква този разход.
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        includeInMonthlyForecast:
+          type: boolean
+          default: true
+          description: Показва дали сумата да участва в месечната прогноза за разходите.
+    SubscriptionStatusUpdateRequest:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        note:
+          type: string
+          maxLength: 255
+          nullable: true
+    SubscriptionResponse:
+      type: object
+      description: 'DB table Subscriptions: id, userId, categoryId, name, amount, currency, cycle, customCycleDays, startDate, nextDueDate, status,
+        description, includeInMonthlyForecast, createdAt, updatedAt. Relations: userId -> Users.id, categoryId -> Categories.id. Системата само
+        проследява външни абонаменти и регулярни разходи.'
+      required:
+      - id
+      - userId
+      - categoryId
+      - categoryName
+      - name
+      - amount
+      - currency
+      - cycle
+      - startDate
+      - nextDueDate
+      - status
+      - includeInMonthlyForecast
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        categoryId:
+          type: integer
+          format: int64
+        categoryName:
+          type: string
+        name:
+          type: string
+        amount:
+          type: number
+          format: decimal
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        cycle:
+          $ref: '#/components/schemas/RenewalCycle'
+        customCycleDays:
+          type: integer
+          nullable: true
+        startDate:
+          type: string
+          format: date
+        nextDueDate:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        description:
+          type: string
+          nullable: true
+        includeInMonthlyForecast:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    BudgetCreateRequest:
+      type: object
+      required:
+      - categoryId
+      - month
+      - year
+      - limitAmount
+      - currency
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+        year:
+          type: integer
+          minimum: 2000
+          maximum: 2100
+        limitAmount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        isActive:
+          type: boolean
+          default: true
+    BudgetUpdateRequest:
+      type: object
+      required:
+      - categoryId
+      - month
+      - year
+      - limitAmount
+      - currency
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+          minimum: 1
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+        year:
+          type: integer
+          minimum: 2000
+          maximum: 2100
+        limitAmount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        isActive:
+          type: boolean
+          default: true
+    BudgetResponse:
+      type: object
+      description: 'DB table Budgets: id, userId, categoryId, month, year, limitAmount, currency, description, isActive, createdAt, updatedAt.
+        Relations: userId -> Users.id, categoryId -> Categories.id.'
+      required:
+      - id
+      - userId
+      - categoryId
+      - categoryName
+      - month
+      - year
+      - limitAmount
+      - currency
+      - isActive
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        categoryId:
+          type: integer
+          format: int64
+        categoryName:
+          type: string
+        month:
+          type: integer
+        year:
+          type: integer
+        limitAmount:
+          type: number
+          format: decimal
+        spentAmount:
+          type: number
+          format: decimal
+          description: Изчислена сума от разходите по категорията за съответния месец.
+        remainingAmount:
+          type: number
+          format: decimal
+          description: Изчислена оставаща сума от бюджета.
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SavingsGoalCreateRequest:
+      type: object
+      required:
+      - name
+      - targetAmount
+      - currentAmount
+      - currency
+      - targetDate
+      - status
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        targetAmount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 1000000000
+        currentAmount:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1000000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        targetDate:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/SavingsGoalStatus'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+          description: Приоритет от 1 до 5, където 5 е най-висок.
+    SavingsGoalUpdateRequest:
+      type: object
+      required:
+      - name
+      - targetAmount
+      - currentAmount
+      - currency
+      - targetDate
+      - status
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        targetAmount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 1000000000
+        currentAmount:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1000000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        targetDate:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/SavingsGoalStatus'
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+          description: Приоритет от 1 до 5, където 5 е най-висок.
+    SavingsGoalProgressUpdateRequest:
+      type: object
+      required:
+      - currentAmount
+      properties:
+        currentAmount:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1000000000
+        note:
+          type: string
+          maxLength: 255
+          nullable: true
+    SavingsGoalResponse:
+      type: object
+      description: 'DB table SavingsGoals: id, userId, name, targetAmount, currentAmount, currency, targetDate, status, description, priority,
+        createdAt, updatedAt. Relations: userId -> Users.id.'
+      required:
+      - id
+      - userId
+      - name
+      - targetAmount
+      - currentAmount
+      - currency
+      - targetDate
+      - status
+      - progressPercent
+      - remainingAmount
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        targetAmount:
+          type: number
+          format: decimal
+        currentAmount:
+          type: number
+          format: decimal
+        remainingAmount:
+          type: number
+          format: decimal
+        progressPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        targetDate:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/SavingsGoalStatus'
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    PaginationMetadata:
+      type: object
+      required:
+      - page
+      - pageSize
+      - totalItems
+      - totalPages
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+        hasPreviousPage:
+          type: boolean
+        hasNextPage:
+          type: boolean
+    PagedUserResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+    PagedCategoryResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+    PagedFinancialRecordResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialRecordResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+    PagedSubscriptionResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+    PagedBudgetResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+    PagedSavingsGoalResponse:
+      type: object
+      required:
+      - items
+      - pagination
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavingsGoalResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+    MonthlySummaryResponse:
+      type: object
+      required:
+      - month
+      - year
+      - totalIncome
+      - totalExpenses
+      - totalExternalSubscriptions
+      - plannedBudget
+      - availableAmount
+      - potentialSavings
+      - currency
+      properties:
+        month:
+          type: integer
+        year:
+          type: integer
+        totalIncome:
+          type: number
+          format: decimal
+        totalExpenses:
+          type: number
+          format: decimal
+        totalExternalSubscriptions:
+          type: number
+          format: decimal
+          description: Сума на активните външни абонаменти/регулярни разходи за месеца.
+        plannedBudget:
+          type: number
+          format: decimal
+        availableAmount:
+          type: number
+          format: decimal
+          description: Приходи минус разходи и планирани регулярни разходи.
+        potentialSavings:
+          type: number
+          format: decimal
+          description: Ориентировъчна сума, която потребителят може да отдели за спестовни цели.
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        generatedAt:
+          type: string
+          format: date-time
+    CategorySummaryItem:
+      type: object
+      required:
+      - categoryId
+      - categoryName
+      - totalAmount
+      - currency
+      properties:
+        categoryId:
+          type: integer
+          format: int64
+        categoryName:
+          type: string
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        totalAmount:
+          type: number
+          format: decimal
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        recordsCount:
+          type: integer
+    HealthCheckResponse:
+      type: object
+      required:
+      - status
+      - apiVersion
+      - databaseStatus
+      - checkedAt
+      properties:
+        status:
+          type: string
+          example: Healthy
+        apiVersion:
+          type: string
+          example: 1.0.0
+        databaseStatus:
+          type: string
+          example: Connected
+        checkedAt:
+          type: string
+          format: date-time
